@@ -20,20 +20,19 @@ public:
         vtkExporter = new FEVTKExport(pfem);
     }
 
-    //~MyCallback()
-    //{
-    //    delete vtkExporter;
-    //}
+    ~MyCallback()
+    {
+        delete vtkExporter;
+    }
 
     bool Execute(FEModel& fem, int nwhen)
     {
 		if (nwhen == CB_MAJOR_ITERS)
 		{
-            printf("*hjs: writing VTK file\n");
-			vtkExporter->Save();
-            
-            // Call at the end of each major converged iteration
-			printf("*hjs: all done\n");
+            printf("*hjs: Writing VTK file\n");
+            if (!vtkExporter->Save())
+				printf("*hjs: Failed to write vtk file!\n");
+			printf("*hjs: All done\n");
 
         }
 

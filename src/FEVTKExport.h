@@ -27,29 +27,29 @@ SOFTWARE.*/
 #pragma once
 #include <FECore/FECoreBase.h>
 #include <FECore/FEModel.h>
-#include <FEBioPlot/FEBioPlotFile.h>
 
-	//-----------------------------------------------------------------------------
-	class FEVTKExport
-	{
-	public:
-		FEVTKExport(FEModel* fem);
-		~FEVTKExport(void);
+#include <vtkMultiBlockDataSet.h>
+#include <vtkSmartPointer.h>
 
-		bool Save();
+class FEVTKExport
+{
+public:
+	FEVTKExport(FEModel*);
+	~FEVTKExport(void);
 
-	private:
-		void WriteHeader();
-		void WritePoints();
-		void WriteCells();
-		void WritePointData();
-		void WriteCellData();
+	bool Save();
 
-	private:
-		FEModel* m_fem;
+private:
+		
+	bool AddDomains(vtkSmartPointer<vtkMultiBlockDataSet>);
+	bool AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet>);
 
-		// check available names in FEBioMech/FEBioMechModule.cpp
-		list<string> cell_data_fields {"stress"};
-		list<string> point_data_fields {"reaction forces"};
-		FILE* m_fp;
-	};
+private:
+	FEModel* m_fem;
+
+	// check available names in FEBioMech/FEBioMechModule.cpp
+	list<string> cell_data_fields {"stress"};
+	list<string> point_data_fields {};
+	list<string> surface_data_fields{"contact traction" };
+
+};
