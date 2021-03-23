@@ -53,10 +53,12 @@ SOFTWARE.*/
 FEVTKExport::FEVTKExport(FEModel* fem)
 {
 	m_fem = fem;
+	//m_prefix = fem->GetTitle(); // 
 
 	// initialize json based meta file following Paraview format
 	// https://gitlab.kitware.com/paraview/paraview/blob/v5.5.0/Documentation/release/ParaView-5.5.0.md#json-based-new-meta-file-format-for-series-added
-	FILE* fp = fopen("test.vtm.series", "wt");
+	
+	FILE* fp = fopen((m_prefix + ".vtm.series").c_str(), "wt");
 	fprintf(fp, "{\n");
 	fprintf(fp, "  \"file-series-version\" : \"1.0\",\n");
 	fprintf(fp, "  \"files\" : [\n");
@@ -68,7 +70,7 @@ FEVTKExport::FEVTKExport(FEModel* fem)
 FEVTKExport::~FEVTKExport(void)
 {
 	// finalize json based meta file
-	FILE* fp = fopen("test.vtm.series", "a");
+	FILE* fp = fopen((m_prefix + ".vtm.series").c_str(), "a");
 	fprintf(fp, "  ]\n");
 	fprintf(fp, "}\n");
 	fclose(fp);
@@ -79,15 +81,16 @@ bool FEVTKExport::Save()
 {
 
 	// get current step and time
-	int step = m_fem->GetCurrentStep()->m_ntimesteps;
+	int step = m_ndump;
+	m_ndump++;  // increment number of dumped solutions
 	double time = m_fem->GetTime().currentTime;
 
 	// set vtk file name
 	char szfile[255];
-	sprintf(szfile, "test%3.3d.vtm", step);
+	sprintf(szfile, "%s%3.3d.vtm", m_prefix.c_str(), step);
 
 	// add this step to the meta file
-	FILE* fp = fopen("test.vtm.series", "a");
+	FILE* fp = fopen((m_prefix + ".vtm.series").c_str(), "a");
 	fprintf(fp, "     { \"name\" : \"%s\", \"time\" : %g },\n", szfile, time);
 	fclose(fp);
 
@@ -129,256 +132,280 @@ bool FEVTKExport::Save()
 
 bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDataSet)
 {
-	printf("*hjs: Exporting mesh!\n");
 
-	// create vtk grid
 	FEMesh& mesh = m_fem->GetMesh();
-	int nodes = mesh.Nodes();
-	int elements = mesh.Elements();
 
-	vtkSmartPointer<vtkUnstructuredGrid> unstructuredGrid =
-		vtkSmartPointer<vtkUnstructuredGrid>::New();
-
-	// convert all nodes to vtk points and insert
-	vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
-	for (int j = 0; j < nodes; j++) {
-		vec3d& r = mesh.Node(j).m_r0;
-		points->InsertNextPoint(r.x, r.y, r.z);
-	}
-	unstructuredGrid->SetPoints(points);
-
-    // insert elements into vtk grid one by one
-	vtkSmartPointer<vtkCellArray> cells = vtkSmartPointer<vtkCellArray>::New();
-	for (int j = 0; j < mesh.Elements(); ++j)
+	// loop over all domains
+	int NDOMS = mesh.Domains();
+	for (int i = 0; i < NDOMS; ++i)
 	{
-		FEElement * el = mesh.Element(j);
+		FEDomain& dom = mesh.Domain(i);
 
-		// connectivity
-		vtkSmartPointer<vtkIdList> cell = vtkSmartPointer<vtkIdList>::New();
-		vector<int>& enodes = el->m_node;
-		for (std::vector<int>::iterator it = enodes.begin(); it != enodes.end(); ++it)
-			cell->InsertNextId(*it);
-		
-		// insert as correct vtk type
-		int vtk_type = -1;
-		switch (el->Type()) {
-			//FE_HEX8G8,
-			//FE_HEX8RI,
-			//FE_HEX8G1,
-			//FE_HEX20G8,
-			//FE_HEX20G27,
-			//FE_HEX27G27,
-			//FE_TET4G1,
-			//FE_TET4G4,
-			//FE_TET5G4,
-			//FE_TET10G1,
-			//FE_TET10G4,
-			//FE_TET10G8,
-			//FE_TET10GL11,
-			//FE_TET10G4RI1,
-			//FE_TET10G8RI4,
-			//FE_TET15G4,
-			//FE_TET15G8,
-			//FE_TET15G11,
-			//FE_TET15G15,
-			//FE_TET15G15RI4,
-			//FE_TET20G15,
-			//FE_PENTA6G6,
-			//FE_PENTA15G8,
-			//FE_PENTA15G21,
-			//FE_PYRA5G8,
-			//FE_PYRA13G8,
-		case FE_TET4G1: vtk_type = VTK_TETRA; break;
-		case FE_TET4G4: vtk_type = VTK_TETRA; break;
-		default: printf("Unknown/unsupported volume element type!"); return false;  break;
-		}       
+		printf("*hjs: Exporting domain: %s.\n", dom.GetName().c_str());
 
-		unstructuredGrid->InsertNextCell(vtk_type, cell);
+		// create an unstructured grid for this domain
+		vtkSmartPointer<vtkUnstructuredGrid> unstructuredGrid =
+			vtkSmartPointer<vtkUnstructuredGrid>::New();
 
-	}
-        
-
-    // --- N O D E   D A T A ---
-	
-	// write displacement - not a FEPlotData object>??
-	{
-		vtkSmartPointer<vtkFloatArray> vtkArray =
-			vtkSmartPointer<vtkFloatArray>::New();
-		vtkArray->SetName("displacement");
-		vtkArray->SetNumberOfComponents(3);
-		vtkArray->SetNumberOfTuples(nodes);
-		for (int i = 0; i < nodes; i++) {
-			vec3d dr = mesh.Node(i).m_rt - mesh.Node(i).m_r0;
-			vtkArray->SetTuple3(i, dr.x, dr.y, dr.z);
+		// convert domain nodes to vtk points and insert into vtk grid
+		vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+		for (int n = 0; n < dom.Nodes(); n++) {
+			vec3d& r = dom.Node(n).m_r0;
+			points->InsertNextPoint(r.x, r.y, r.z);
 		}
-		unstructuredGrid->GetPointData()->AddArray(vtkArray);
-	}
+		unstructuredGrid->SetPoints(points);
 
-	for (list<string>::const_iterator var_name = point_data_fields.begin(); 
-		var_name != point_data_fields.end(); ++var_name) {
-
-		printf("*hjs: Writing nodal variable: %s\n",var_name->c_str());
-
-		// create the plot variable
-		FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
-
-		// check that it is a valid nodal plot variable
-		assert(pd->RegionType() == FE_REGION_NODE);
-
-		// get number of components
-		int ndata = pd->VarSize(pd->DataType());
-
-		// allocate data buffer
-		FEDataStream val; 
-		val.reserve(ndata * nodes);
-
-        // evaluate on the mesh nodes
-		if (!pd->Save(mesh, val)) return false;
-
-		// create vtk array
-		vtkSmartPointer<vtkFloatArray> vtkArray =
-			vtkSmartPointer<vtkFloatArray>::New();
-		vtkArray->SetName(var_name->c_str());
-		vtkArray->SetNumberOfComponents(ndata);
-		//vtkArray->SetNumberOfTuples(nodes);
-
-		// transfer from buffer		
-		switch (pd->DataType()) {
-		case PLT_FLOAT:  // scalar
-			for (int i = 0; i < val.size(); i += 1)
-				vtkArray->InsertNextTuple1(val[i]);
-			break;
-		case PLT_VEC3F:  // 3 comp vector
-			vtkArray->SetComponentName(0, "X");
-			vtkArray->SetComponentName(1, "Y");
-			vtkArray->SetComponentName(2, "Z");
-			for (int i = 0; i < val.size(); i += 3)
-				vtkArray->InsertNextTuple3(
-					val[i], val[i + 1], val[i + 2]
-				);
-			break;
-		case PLT_MAT3FS:  // symmetric 3x3 matrix
-			vtkArray->SetComponentName(0, "XX");
-			vtkArray->SetComponentName(1, "YY");
-			vtkArray->SetComponentName(2, "ZZ");
-			vtkArray->SetComponentName(3, "XY");
-			vtkArray->SetComponentName(4, "YZ");
-			vtkArray->SetComponentName(5, "XZ");
-			for (int i = 0; i < val.size(); i += 6)
-				vtkArray->InsertNextTuple6(
-					val[i    ], val[i + 1], val[i + 2],
-					val[i + 3], val[i + 4], val[i + 5]
-				);
-			break;
-		case PLT_MAT3FD: // diagonal 3x3 matrix
-			vtkArray->SetComponentName(0, "XX");
-			vtkArray->SetComponentName(1, "YY");
-			vtkArray->SetComponentName(2, "ZZ");
-			for (int i = 0; i < val.size(); i += 3)
-				vtkArray->InsertNextTuple3( 
-					val[i], val[i + 1], val[i + 2]
-				);
-			break;
-		default:
-			printf("Unknown/unsupported data type of plot variable!");
-			return false;  
-			break; 
-		}
-
-		// add to grid
-		unstructuredGrid->GetPointData()->AddArray(vtkArray);
-		
-	}
-
-
-    // --- E L E M E N T   C E L L   D A T A ---
-
-	for (list<string>::const_iterator var_name = cell_data_fields.begin(); 
-		var_name != cell_data_fields.end(); ++var_name) {
-
-		printf("*hjs: Writing element variable: %s\n", var_name->c_str());
-
-		// create the plot variable
-		FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
-
-		// check valid element plot variable
-		assert(pd->RegionType() == FE_REGION_DOMAIN);
-
-		// get number of components
-		int ndata = pd->VarSize(pd->DataType());
-
-		// create vtk array
-		vtkSmartPointer<vtkFloatArray> vtkArray =
-			vtkSmartPointer<vtkFloatArray>::New();
-		vtkArray->SetName(var_name->c_str());
-		vtkArray->SetNumberOfComponents(ndata);
-		//vtkArray->SetNumberOfTuples(elements);
-
-		// loop over all domains
-		int NDOMS = mesh.Domains();
-		for (int i = 0; i < NDOMS; ++i)
+		// insert elements into vtk grid one by one
+		vtkSmartPointer<vtkCellArray> cells = vtkSmartPointer<vtkCellArray>::New();
+		for (int e = 0; e < dom.Elements(); ++e)
 		{
-			FEDomain& dom = mesh.Domain(i);
+
+			FEElement el = dom.ElementRef(e);
+
+			// local (domain) connectivity
+			vtkSmartPointer<vtkIdList> cell = vtkSmartPointer<vtkIdList>::New();
+			vector<int>& enodes = el.m_lnode;
+			for (std::vector<int>::iterator it = enodes.begin(); it != enodes.end(); ++it)
+				cell->InsertNextId(*it);
+
+			// insert as correct vtk type
+			int vtk_type = -1;
+			switch (el.Type()) {
+				//FE_HEX8G8,
+				//FE_HEX8RI,
+				//FE_HEX8G1,
+				//FE_HEX20G8,
+				//FE_HEX20G27,
+				//FE_HEX27G27,
+				//FE_TET4G1,
+				//FE_TET4G4,
+				//FE_TET5G4,
+				//FE_TET10G1,
+				//FE_TET10G4,
+				//FE_TET10G8,
+				//FE_TET10GL11,
+				//FE_TET10G4RI1,
+				//FE_TET10G8RI4,
+				//FE_TET15G4,
+				//FE_TET15G8,
+				//FE_TET15G11,
+				//FE_TET15G15,
+				//FE_TET15G15RI4,
+				//FE_TET20G15,
+				//FE_PENTA6G6,
+				//FE_PENTA15G8,
+				//FE_PENTA15G21,
+				//FE_PYRA5G8,
+				//FE_PYRA13G8,
+			case FE_TET4G1: vtk_type = VTK_TETRA; break;
+			case FE_TET4G4: vtk_type = VTK_TETRA; break;
+			default: printf("Unknown/unsupported volume element type!"); return false;  break;
+			}
+
+			unstructuredGrid->InsertNextCell(vtk_type, cell);
+
+		} // elements, e
+
+
+		// --- N O D E   D A T A ---
+
+		// write displacement - not a FEPlotData object>??
+		{
+			vtkSmartPointer<vtkFloatArray> vtkArray =
+				vtkSmartPointer<vtkFloatArray>::New();
+			vtkArray->SetName("displacement");
+			vtkArray->SetNumberOfComponents(3);
+			vtkArray->SetNumberOfTuples(dom.Nodes());
+			for (int n = 0; n < dom.Nodes(); n++) {
+				vec3d dr = dom.Node(n).m_rt - dom.Node(n).m_r0;
+				vtkArray->SetTuple3(n, dr.x, dr.y, dr.z);
+			}
+			unstructuredGrid->GetPointData()->AddArray(vtkArray);
+		}
+
+		for (list<string>::const_iterator var_name = point_data_fields.begin();
+			var_name != point_data_fields.end(); ++var_name) {
+
+			printf("*hjs: Writing nodal variable: %s\n", var_name->c_str());
+
+			// create the plot variable
+			FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
+
+			// check that it is a valid nodal plot variable
+			assert(pd->RegionType() == FE_REGION_NODE); // must be evaluated on the entire mesh :(
+
+			// verify one value per node
+			assert(pd->StorageFormat() == FMT_NODE);
+
+			// get number of components
+			int ndata = pd->VarSize(pd->DataType());
+
+			// allocate data buffer
+			FEDataStream val;
+			val.reserve(ndata * dom.Nodes());
+
+			// evaluate on the all nodes.. TODO: fix this
+			if (pd->Save(mesh, val))
+			{ 
+				// create vtk array
+				vtkSmartPointer<vtkFloatArray> vtkArray =
+					vtkSmartPointer<vtkFloatArray>::New();
+				vtkArray->SetName(var_name->c_str());
+				vtkArray->SetNumberOfComponents(ndata);
+
+				// transfer from buffer
+				switch (pd->DataType()) {
+				case PLT_FLOAT:  // scalar
+					for (int j = 0; j < dom.Nodes(); j++) {
+						int k = dom.NodeIndex(j); // global index of local node
+						vtkArray->InsertNextTuple1(val[k]);
+					}
+					break;
+				case PLT_VEC3F:  // 3 comp vector
+					vtkArray->SetComponentName(0, "X");
+					vtkArray->SetComponentName(1, "Y");
+					vtkArray->SetComponentName(2, "Z");
+					for (int j = 0; j < dom.Nodes(); j++) {
+						int k = 3 * dom.NodeIndex(j); // global index of local node
+						vtkArray->InsertNextTuple3(
+							val[k], val[k + 1], val[k + 2]
+						);
+					}
+					break;
+				case PLT_MAT3FS:  // symmetric 3x3 matrix
+					vtkArray->SetComponentName(0, "XX");
+					vtkArray->SetComponentName(1, "YY");
+					vtkArray->SetComponentName(2, "ZZ");
+					vtkArray->SetComponentName(3, "XY");
+					vtkArray->SetComponentName(4, "YZ");
+					vtkArray->SetComponentName(5, "XZ");
+
+					for (int j = 0; j < dom.Nodes(); j++) {
+						int k = 6 * dom.NodeIndex(j); // global index of local node
+						vtkArray->InsertNextTuple6(
+							val[k], val[k + 1], val[k + 2],
+							val[k + 3], val[k + 4], val[k + 5]
+						);
+					}
+					break;
+				case PLT_MAT3FD: // diagonal 3x3 matrix
+					vtkArray->SetComponentName(0, "XX");
+					vtkArray->SetComponentName(1, "YY");
+					vtkArray->SetComponentName(2, "ZZ");
+					for (int j = 0; j < dom.Nodes(); j++) {
+						int k = 3 * dom.NodeIndex(j); // global index of local node
+						vtkArray->InsertNextTuple3(
+							val[k], val[k + 1], val[k + 2]
+						);
+					}
+					break;
+				default:
+					printf("Unknown/unsupported data type of plot variable!");
+					return false;
+					break;
+				}
+
+				// add to grid
+				unstructuredGrid->GetPointData()->AddArray(vtkArray);
+
+			} else {
+				printf("*hjs: unable to get plotdata!\n");
+			}
+
+		}  // var_name iterator
+
+
+		// --- E L E M E N T   C E L L   D A T A ---
+
+		for (list<string>::const_iterator var_name = cell_data_fields.begin();
+			var_name != cell_data_fields.end(); ++var_name) {
+
+			printf("*hjs: Writing element variable: %s\n", var_name->c_str());
+
+			// create the plot variable
+			FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
+
+			// verify domain plot variable
+			assert(pd->RegionType() == FE_REGION_DOMAIN);
+
+			// verify one value per element
+			assert(pd->StorageFormat() == FMT_ITEM);
+
+			// get number of components
+			int ndata = pd->VarSize(pd->DataType());
+
+
 
 			// allocate data buffer
 			FEDataStream val;
 			val.reserve(ndata * dom.Elements());
 
 			// evaluate on the mesh nodes
-			if (!pd->Save(dom, val)) return false;
+			// may fail if material does not support plotdata, eg. rigid material does not compute stresses
+			if (pd->Save(dom, val))
+			{
+				// create vtk array
+				vtkSmartPointer<vtkFloatArray> vtkArray =
+					vtkSmartPointer<vtkFloatArray>::New();
+				vtkArray->SetName(var_name->c_str());
+				vtkArray->SetNumberOfComponents(ndata);
 
-			// transfer from buffer		
-			switch (pd->DataType()) {
-			case PLT_FLOAT:  // scalar
-				for (int i = 0; i < val.size(); i += 1)
-					vtkArray->SetTuple1(i, val[i]);
-				break;
-			case PLT_VEC3F:  // 3 comp vector
-				vtkArray->SetComponentName(0, "X");
-				vtkArray->SetComponentName(1, "Y");
-				vtkArray->SetComponentName(2, "Z");
-				for (int i = 0; i < val.size(); i += 3)
-					vtkArray->InsertNextTuple3(
-						val[i], val[i + 1], val[i + 2]
-					);
-				break;
-			case PLT_MAT3FS:  // symmetric 3x3 matrix
-				vtkArray->SetComponentName(0, "XX");
-				vtkArray->SetComponentName(1, "YY");
-				vtkArray->SetComponentName(2, "ZZ");
-				vtkArray->SetComponentName(3, "XY");
-				vtkArray->SetComponentName(4, "YZ");
-				vtkArray->SetComponentName(5, "XZ");
-				for (int i = 0; i < val.size(); i += 6)
-					vtkArray->InsertNextTuple6(
-						val[i], val[i + 1], val[i + 2],
-						val[i + 3], val[i + 4], val[i + 5]
-					);
-				break;
-			case PLT_MAT3FD: // diagonal 3x3 matrix
-				vtkArray->SetComponentName(0, "XX");
-				vtkArray->SetComponentName(1, "YY");
-				vtkArray->SetComponentName(2, "ZZ");
-				for (int i = 0; i < val.size(); i += 3)
-					vtkArray->InsertNextTuple3(
-						val[i], val[i + 1], val[i + 2]
-					);
-				break;
-			default:
-				printf("Unknown/unsupported data type of plot variable!");
-				return false;
-				break;
+				// transfer from buffer		
+				switch (pd->DataType()) {
+				case PLT_FLOAT:  // scalar
+					for (int j = 0; j < val.size(); j += 1)
+						vtkArray->InsertNextTuple1(val[j]);
+					break;
+				case PLT_VEC3F:  // 3 comp vector
+					vtkArray->SetComponentName(0, "X");
+					vtkArray->SetComponentName(1, "Y");
+					vtkArray->SetComponentName(2, "Z");
+					for (int j = 0; j < val.size(); j += 3)
+						vtkArray->InsertNextTuple3(
+							val[j], val[j + 1], val[j + 2]
+						);
+					break;
+				case PLT_MAT3FS:  // symmetric 3x3 matrix
+					vtkArray->SetComponentName(0, "XX");
+					vtkArray->SetComponentName(1, "YY");
+					vtkArray->SetComponentName(2, "ZZ");
+					vtkArray->SetComponentName(3, "XY");
+					vtkArray->SetComponentName(4, "YZ");
+					vtkArray->SetComponentName(5, "XZ");
+					for (int j = 0; j < val.size(); j += 6)
+						vtkArray->InsertNextTuple6(
+							val[j], val[j + 1], val[j + 2],
+							val[j + 3], val[j + 4], val[j + 5]
+						);
+					break;
+				case PLT_MAT3FD: // diagonal 3x3 matrix
+					vtkArray->SetComponentName(0, "XX");
+					vtkArray->SetComponentName(1, "YY");
+					vtkArray->SetComponentName(2, "ZZ");
+					for (int j = 0; j < val.size(); j += 3)
+						vtkArray->InsertNextTuple3(
+							val[j], val[j + 1], val[j + 2]
+						);
+					break;
+				default:
+					printf("Unknown/unsupported data type of plot variable!");
+					return false;
+					break;
+				}
+
+				// add to grid
+				unstructuredGrid->GetCellData()->AddArray(vtkArray);
+			}
+			else {
+				printf("*hjs: unable to get plotdata!\n");
 			}
 
-		}
+		} // var_name iterator
 
-		// add to grid
-		unstructuredGrid->GetCellData()->AddArray(vtkArray);
+		multiBlockDataSet->SetBlock(i, unstructuredGrid);
+		multiBlockDataSet->GetMetaData((unsigned int)i)->Set(vtkCompositeDataSet::NAME(), dom.GetName().c_str());
 
-	}
-
-	multiBlockDataSet->SetBlock(0, unstructuredGrid);
-	multiBlockDataSet->GetMetaData((unsigned int)0)->Set(vtkCompositeDataSet::NAME(), "All");
+	} // domain, i
 
 	return true;
 
@@ -391,13 +418,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 	// Each surface is stored in its own file.
 	// Surfaces are duplicated whenever referenced in multiple contact-pairs.
 	// Merge dublicate surfaces before export.
-
-	printf("*hjs: Exporting surfaces!\n");
-
-	// get current step and time
-	int step = m_fem->GetCurrentStep()->m_ntimesteps;
-	double time = m_fem->GetTime().currentTime;
-
 
     // get "surfaces"
 	FEMesh& m = m_fem->GetMesh();
@@ -424,7 +444,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 
 		// get reference surface, count elements and size of data
 		FESurface* Si = m.FindSurface(name); // what surface will this return???
-		int elements = Si->Elements();
 
 		// write points
 		vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
@@ -443,7 +462,7 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 		vtkSmartPointer<vtkCellArray> cells =
 			vtkSmartPointer<vtkCellArray>::New();
 
-		for (int e = 0; e < elements; e++)
+		for (int e = 0; e < Si->Elements(); e++)
 		{
 			FEElement el = Si->Element(e);
 			vector<int>& enodes = el.m_lnode;
@@ -514,10 +533,10 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 				vtkSmartPointer<vtkFloatArray>::New();
 			vtkArray->SetName("surface normal");
 			vtkArray->SetNumberOfComponents(3);
-			vtkArray->SetNumberOfTuples(elements);
+			vtkArray->SetNumberOfTuples(Si->Elements());
 
 			// use normal in displaced element (natural coord (0.5,0.5) is center)					
-			for (int e = 0; e < elements; e++)
+			for (int e = 0; e < Si->Elements(); e++)
 			{
 				vec3d n = Si->SurfaceNormal(Si->Element(e), 0.5, 0.5);
 				vtkArray->SetTuple3(e, n.x, n.y, n.z);
@@ -536,14 +555,14 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 			// verify region
 			assert(pd->RegionType() == FE_REGION_SURFACE);
 
-			// verify..?
+			// verify..? cell data not point data?
 			assert(pd->StorageFormat() == FMT_ITEM);
 
 			// get number of components
 			int ndata = pd->VarSize(pd->DataType());
 
 			// total size of data
-			int nsize = ndata * elements;
+			int nsize = ndata * Si->Elements();
 
 			// allocate buffer and initialize to zero
 			double* merge_val = new double[nsize];
@@ -561,42 +580,46 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 				if (name.compare(Sj.GetName()) != 0)
 					continue;
 
-				printf("*hjs: adding contribution from surface %d\n", j);
+				printf("*hjs: Adding contribution from surface %d.\n", j);
 
 				// check that number of elements matches
-				assert(elements == Sj.Elements());
+				assert(Si->Elements() == Sj.Elements());
 
-				// get data for this surface, "a" can be accessed like an array
+				// get data for this surface
 				FEDataStream val; val.reserve(nsize);
-				if (!pd->Save(Sj, val)) return false;
-
-				// merge using addition
-				// TODO: for some variables ie contact gap we should take min value
-				for (int k = 0; k < nsize; ++k) {
-					merge_val[k] += val[k];
+				if (pd->Save(Sj, val))
+				{
+					// merge using addition
+                    // TODO: for some variables ie contact gap we should take min value
+					for (int k = 0; k < nsize; ++k) {
+						merge_val[k] += val[k];
+					}
 				}
-			}
+				else {
+					printf("*hjs: unable to get plotdata!\n");
+				}
+
+			} // Surface(j), j
 
 			// create vtk array
 			vtkSmartPointer<vtkFloatArray> vtkArray =
 				vtkSmartPointer<vtkFloatArray>::New();
 			vtkArray->SetName(var_name->c_str());
 			vtkArray->SetNumberOfComponents(ndata);
-			//vtkArray->SetNumberOfTuples(elements);
 
 			// transfer from buffer
 			switch (pd->DataType()) {
 			case PLT_FLOAT:  // scalar
-				for (int k = 0; k < nsize; k += 1)
-					vtkArray->SetTuple1(k, merge_val[k]);
+				for (int j = 0; j < nsize; j += 1)
+					vtkArray->InsertNextTuple1(merge_val[j]);
 				break;
 			case PLT_VEC3F:  // 3 comp vector
 				vtkArray->SetComponentName(0, "X");
 				vtkArray->SetComponentName(1, "Y");
 				vtkArray->SetComponentName(2, "Z");
-				for (int k = 0; k < nsize; k += 3)
+				for (int j = 0; j < nsize; j += 3)
 					vtkArray->InsertNextTuple3(
-						merge_val[k], merge_val[k + 1], merge_val[k + 2]
+						merge_val[j], merge_val[j + 1], merge_val[j + 2]
 					);
 				break;
 			default:
@@ -612,17 +635,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 			delete merge_val;
 
 		}  // plot variable
-
-		// set vtk file name
-		char szfile[255];
-		sprintf(szfile, "%s_%3.3d.vtp", name.c_str(), step);
-
-		//// Write polydata using XML writer
-		//vtkSmartPointer<vtkXMLPolyDataWriter> writer = 
-		//	vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-		//writer->SetFileName(szfile);
-		//writer->SetInputData(polydata);
-		//writer->Write();
 
 		multiBlockDataSet->SetBlock(i, polydata);
 		multiBlockDataSet->GetMetaData((unsigned int)i)->Set(vtkCompositeDataSet::NAME(), name.c_str());

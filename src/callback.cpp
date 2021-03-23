@@ -29,6 +29,7 @@ public:
     {
 		if (nwhen == CB_MAJOR_ITERS)
 		{
+
             printf("*hjs: Writing VTK file\n");
             if (!vtkExporter->Save())
 				printf("*hjs: Failed to write vtk file!\n");
