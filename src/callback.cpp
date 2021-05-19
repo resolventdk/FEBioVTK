@@ -30,15 +30,21 @@ public:
 		if (nwhen == CB_MAJOR_ITERS)
 		{
 
-            printf("*hjs: Writing VTK file\n");
-            if (!vtkExporter->Save())
-				printf("*hjs: Failed to write vtk file!\n");
-			printf("*hjs: All done\n");
+   //         printf("*hjs: Writing VTK file\n");
+   //         if (!vtkExporter->Save())
+			//	printf("*hjs: Failed to write vtk file!\n");
+			//printf("*hjs: All done\n");
 
         }
 
         if (nwhen == CB_SOLVED)
         {
+
+            printf("*hjs: Writing VTK file\n");
+            if (!vtkExporter->Save())
+                printf("*hjs: Failed to write vtk file!\n");
+            printf("*hjs: All done\n");
+
             delete vtkExporter;
         }
 
