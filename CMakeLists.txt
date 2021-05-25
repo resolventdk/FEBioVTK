@@ -1,7 +1,7 @@
 # Created by the script cgal_create_CMakeLists
 # This is the CMake script for compiling a set of CGAL applications.
 
-project( libvtk_gcc64 )
+project( libvtk )
 
 cmake_minimum_required(VERSION 3.9)
 
@@ -12,7 +12,7 @@ set(CMAKE_CXX_FLAGS "-fPIC -g")
 # FEBIO
 SET(FEBIO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 ADD_LIBRARY(febio STATIC IMPORTED)
-SET_TARGET_PROPERTIES(febio PROPERTIES IMPORTED_LOCATION ${FEBIO_ROOT}/build/lib/libfecore_gcc64.a)
+SET_TARGET_PROPERTIES(febio PROPERTIES IMPORTED_LOCATION ${FEBIO_ROOT}/build/lib/libfecore.a)
 
 # OPENMP
 find_package(OpenMP)
