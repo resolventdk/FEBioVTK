@@ -50,8 +50,8 @@ private:
 	int m_ndump = 0;
 
 	// check available names in FEBioMech/FEBioMechModule.cpp
-	list<string> cell_data_fields {"stress", "stress error"};
-	list<string> point_data_fields {"reaction forces"};
-	list<string> surface_data_fields{"contact traction"};
+	list<string> cell_data_fields {"stress", "Lagrange strain"};
+	list<string> point_data_fields{};
+	list<string> surface_data_fields{"contact traction", "contact gap"};
 
 };
