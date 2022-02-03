@@ -39,6 +39,7 @@ SOFTWARE.*/
 #include <vtkCellArray.h>
 #include <vtkCellData.h>
 #include <vtkPointData.h>
+#include <vtkIntArray.h>
 #include <vtkFloatArray.h>
 #include <vtkIdList.h>
 #include <vtkPoints.h>
@@ -71,6 +72,7 @@ FEVTKExport::~FEVTKExport(void)
 {
 	// finalize json based meta file
 	FILE* fp = fopen((m_prefix + ".vtm.series").c_str(), "a");
+	fprintf(fp, "\n");  // finish last entry
 	fprintf(fp, "  ]\n");
 	fprintf(fp, "}\n");
 	fclose(fp);
@@ -91,7 +93,8 @@ bool FEVTKExport::Save()
 
 	// add this step to the meta file
 	FILE* fp = fopen((m_prefix + ".vtm.series").c_str(), "a");
-	fprintf(fp, "     { \"name\" : \"%s\", \"time\" : %g },\n", szfile, time);
+	if (m_ndump > 1) fprintf(fp, ",\n");  // finish last entry
+	fprintf(fp, "     { \"name\" : \"%s\", \"time\" : %g }", szfile, time);
 	fclose(fp);
 
 	// create MultiBlockDataSets
@@ -140,8 +143,6 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 	for (int i = 0; i < NDOMS; ++i)
 	{
 		FEDomain& dom = mesh.Domain(i);
-
-		printf("*hjs: Exporting domain: %s.\n", dom.GetName().c_str());
 
 		// create an unstructured grid for this domain
 		vtkSmartPointer<vtkUnstructuredGrid> unstructuredGrid =
@@ -197,6 +198,9 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 				//FE_PENTA15G21,
 				//FE_PYRA5G8,
 				//FE_PYRA13G8,
+			case FE_HEX8RI: vtk_type = VTK_HEXAHEDRON; break;
+			case FE_HEX8G1: vtk_type = VTK_HEXAHEDRON; break;
+			case FE_HEX8G8: vtk_type = VTK_HEXAHEDRON; break;
 			case FE_TET4G1: vtk_type = VTK_TETRA; break;
 			case FE_TET4G4: vtk_type = VTK_TETRA; break;
 			default: printf("Unknown/unsupported volume element type!"); return false;  break;
@@ -225,8 +229,6 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 
 		for (list<string>::const_iterator var_name = point_data_fields.begin();
 			var_name != point_data_fields.end(); ++var_name) {
-
-			printf("*hjs: Writing nodal variable: %s\n", var_name->c_str());
 
 			// create the plot variable
 			FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
@@ -309,7 +311,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 				unstructuredGrid->GetPointData()->AddArray(vtkArray);
 
 			} else {
-				printf("*hjs: unable to get plotdata!\n");
+				printf("Unable to get plotdata: %s!\n", var_name->c_str());
 			}
 
 		}  // var_name iterator
@@ -317,10 +319,25 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 
 		// --- E L E M E N T   C E L L   D A T A ---
 
+		// Write Material ID, then we can identify rigid domains
+		{
+			vtkSmartPointer<vtkIntArray> vtkArray =
+				vtkSmartPointer<vtkIntArray>::New();
+			vtkArray->SetName("MatID");
+			vtkArray->SetNumberOfComponents(1);
+			
+			for (int e = 0; e < dom.Elements(); ++e)
+			{
+				FEElement el = dom.ElementRef(e);
+				vtkArray->InsertNextTuple1(el.GetMatID());
+			}
+			
+			unstructuredGrid->GetCellData()->AddArray(vtkArray);
+		}
+
+		// data fields
 		for (list<string>::const_iterator var_name = cell_data_fields.begin();
 			var_name != cell_data_fields.end(); ++var_name) {
-
-			printf("*hjs: Writing element variable: %s\n", var_name->c_str());
 
 			// create the plot variable
 			FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
@@ -333,8 +350,6 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 
 			// get number of components
 			int ndata = pd->VarSize(pd->DataType());
-
-
 
 			// allocate data buffer
 			FEDataStream val;
@@ -397,7 +412,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 				unstructuredGrid->GetCellData()->AddArray(vtkArray);
 			}
 			else {
-				printf("*hjs: unable to get plotdata!\n");
+				printf("Unable to get plotdata: %s!\n", var_name->c_str());
 			}
 
 		} // var_name iterator
@@ -440,7 +455,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 
 		// get the name
 		const std::string name = unique_names[i];
-		printf("*hjs: Exporting surface: %s\n", name.c_str());
 
 		// get reference surface, count elements and size of data
 		FESurface* Si = m.FindSurface(name); // what surface will this return???
@@ -496,6 +510,8 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 				//FE_QUAD8NI,
 				//FE_QUAD9G9,
 				//FE_QUAD9NI,
+			case FE_QUAD4G4: vtk_type = VTK_QUAD; break;
+			case FE_QUAD4NI: vtk_type = VTK_QUAD; break;
 			case FE_TRI3G1: vtk_type = VTK_TRIANGLE; break;
 			case FE_TRI3G3: vtk_type = VTK_TRIANGLE; break;
 			case FE_TRI3G7: vtk_type = VTK_TRIANGLE; break;
@@ -509,7 +525,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 		polydata->SetPolys(cells);
 
 		// --- S U R F A C E   P O I N T   D A T A ---
-		printf("*hjs: Writing surface displacements!\n");
 		{
 			vtkSmartPointer<vtkFloatArray> vtkArray =
 				vtkSmartPointer<vtkFloatArray>::New();
@@ -527,7 +542,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 		}
 
 		// --- S U R F A C E   C E L L   D A T A ---
-		printf("*hjs: Writing surface normals!\n");
 		{
 			vtkSmartPointer<vtkFloatArray> vtkArray =
 				vtkSmartPointer<vtkFloatArray>::New();
@@ -546,8 +560,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 
 		for (list<string>::const_iterator var_name = surface_data_fields.begin();
 			var_name != surface_data_fields.end(); ++var_name) {
-
-			printf("*hjs: Writing surface variable: %s\n", var_name->c_str());
 
 			// create the plot variable
 			FEPlotData* pd = fecore_new<FEPlotData>(var_name->c_str(), m_fem);
@@ -580,8 +592,6 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 				if (name.compare(Sj.GetName()) != 0)
 					continue;
 
-				printf("*hjs: Adding contribution from surface %d.\n", j);
-
 				// check that number of elements matches
 				assert(Si->Elements() == Sj.Elements());
 
@@ -596,7 +606,7 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 					}
 				}
 				else {
-					printf("*hjs: unable to get plotdata!\n");
+					printf("Unable to get plotdata: %s!\n", var_name->c_str());
 				}
 
 			} // Surface(j), j
