@@ -1,29 +1,3 @@
-/*This file is part of the FEBio Studio source code and is licensed under the MIT license
-listed below.
-
-See Copyright-FEBio-Studio.txt for details.
-
-Copyright (c) 2020 University of Utah, The Trustees of Columbia University in 
-the City of New York, and others.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.*/
-
 #include "FEVTKExport.h"
 
 #include <stdio.h>
@@ -34,6 +8,7 @@ SOFTWARE.*/
 #include "FECore/FECore.h"
 #include "FECore/FEPlotData.h"
 #include "FECore/FEDomain.h"
+#include "FECore/log.h"
 
 #include <vtkCell.h>
 #include <vtkCellArray.h>
@@ -203,7 +178,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 			case FE_HEX8G8: vtk_type = VTK_HEXAHEDRON; break;
 			case FE_TET4G1: vtk_type = VTK_TETRA; break;
 			case FE_TET4G4: vtk_type = VTK_TETRA; break;
-			default: printf("Unknown/unsupported volume element type!"); return false;  break;
+			default: feLogEx(m_fem, "Unknown/unsupported volume element type!"); return false;  break;
 			}
 
 			unstructuredGrid->InsertNextCell(vtk_type, cell);
@@ -302,7 +277,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 					}
 					break;
 				default:
-					printf("Unknown/unsupported data type of plot variable!");
+					feLogEx(m_fem, "Unknown/unsupported data type of plot variable!");
 					return false;
 					break;
 				}
@@ -311,7 +286,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 				unstructuredGrid->GetPointData()->AddArray(vtkArray);
 
 			} else {
-				printf("Unable to get plotdata: %s!\n", var_name->c_str());
+				feLogEx(m_fem, "Unable to write node data: '%s'\n", var_name->c_str());
 			}
 
 		}  // var_name iterator
@@ -403,7 +378,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 						);
 					break;
 				default:
-					printf("Unknown/unsupported data type of plot variable!");
+					feLogEx(m_fem, "Unknown/unsupported data type of plot variable!");
 					return false;
 					break;
 				}
@@ -412,7 +387,7 @@ bool FEVTKExport::AddDomains(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDat
 				unstructuredGrid->GetCellData()->AddArray(vtkArray);
 			}
 			else {
-				printf("Unable to get plotdata: %s!\n", var_name->c_str());
+				feLogEx(m_fem, "Unable to write element data '%s' for domain '%s'\n", var_name->c_str(), dom.GetName().c_str());
 			}
 
 		} // var_name iterator
@@ -516,7 +491,7 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 			case FE_TRI3G3: vtk_type = VTK_TRIANGLE; break;
 			case FE_TRI3G7: vtk_type = VTK_TRIANGLE; break;
 			case FE_TRI3NI: vtk_type = VTK_TRIANGLE; break;
-			default: printf("Unknown/unsupported volume element type!"); return false;  break;
+			default: feLogEx(m_fem, "Unknown/unsupported surface element type!"); return false;  break;
 			}
 
 			// inserting directly into polydata cause seg error (ulike for vtugrid)
@@ -606,7 +581,7 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 					}
 				}
 				else {
-					printf("Unable to get plotdata: %s!\n", var_name->c_str());
+					feLogEx(m_fem, "Unable to write surface data '%s' for surface '%s'\n", var_name->c_str(), name.c_str());
 				}
 
 			} // Surface(j), j
@@ -633,7 +608,7 @@ bool FEVTKExport::AddSurfaces(vtkSmartPointer<vtkMultiBlockDataSet> multiBlockDa
 					);
 				break;
 			default:
-				printf("Unknown/unsupported data type of plot variable!");
+				feLogEx(m_fem, "Unknown/unsupported data type of plot variable!");
 				return false;
 				break;
 			}

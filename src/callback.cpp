@@ -1,12 +1,9 @@
-#include <stdio.h>
-#include <string>
-#include <vector>
-#include <algorithm>
-
 #include <FECore/sdk.h>
 #include <FECore/Callback.h>
 #include <FECore/FEModel.h>
 #include <FECore/FECallBack.h>
+#include "FECore/log.h"
+
 #include "FEVTKExport.h"
 
 class MyCallback : public FECallBack
@@ -27,25 +24,17 @@ public:
 
     bool Execute(FEModel& fem, int nwhen)
     {
-		if (nwhen == CB_MAJOR_ITERS)
-		{
-
-   //         printf("*hjs: Writing VTK file\n");
-   //         if (!vtkExporter->Save())
-			//	printf("*hjs: Failed to write vtk file!\n");
-			//printf("*hjs: All done\n");
-
-        }
+        FEModel* pfem = &fem;
 
         if (nwhen == CB_SOLVED)
-        {
-
-            printf("*hjs: Writing VTK file\n");
+        {        
+            feLogEx(pfem, "Writing VTK file\n");
+            feLogEx(pfem, "===========================================================================\n");
             if (!vtkExporter->Save())
-                printf("*hjs: Failed to write vtk file!\n");
-            printf("*hjs: All done\n");
+                feLogEx(pfem, "Failed to write VTK file!\n");
+            feLogEx(pfem, "Done\n\n");
 
-            delete vtkExporter;
+            delete vtkExporter; // plugin deconstructor not called on normal termination! 
         }
 
 		// all done!
